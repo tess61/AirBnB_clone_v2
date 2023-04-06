@@ -1,37 +1,41 @@
 #!/usr/bin/python3
-from fabric.api import local, cd, put, env, run, sudo
-from datetime import datetime
-from os import path
-
-env.hosts = ['3.239.74.200', '3.238.233.55']
+"""This script (based on the file 1-pack_web_static.py) that
+distributes an archive to your web servers, using the function do_deploy"""
 
 
-def do_pack():
-    """generates a .tgz archive"""
-    now = datetime.now().strftime('%Y%m%d%H%M%S')
-    fpath = 'versions/web_static_{}.tgz'.format(now)
-    local('mkdir -p versions/')
-    result = local('tar -cvzf {} web_static'.format(fpath))
-    if (result.succeeded):
-        return fpath
+from fabric.api import env, put, run
+from os.path import exists
+import shlex
+env.hosts = ['35.185.108.180', '34.229.169.234']
+env.user = 'ubuntu'
 
 
 def do_deploy(archive_path):
-    """distributes an archive to web servers"""
-    archive_withoutext = path.splitext(path.basename(archive_path))[0]
-    if (not path.exists(archive_path)):
+    """All remote commands must be executed on your both web servers
+    (using env.hosts = ['<IP web-01>', 'IP web-02'] variable in your script)"""
+    if not exists(archive_path):
         return False
-    with cd('/tmp'):
-        upload = put(archive_path, archive_withoutext + '.tgz')
-    sudo('mkdir -p /data/web_static/releases/{}'.format(archive_withoutext))
-    sudo('tar -xzf /tmp/{0}.tgz -C /data/web_static/releases/{0}/'.format(
-         archive_withoutext))
-    sudo('rm /tmp/{}.tgz'.format(archive_withoutext))
-    sudo('mv /data/web_static/releases/{0}/web_static/* \
-    /data/web_static/releases/{0}/'.format(archive_withoutext))
-    sudo('rm -rf /data/web_static/releases/{}/web_static'.format(
-        archive_withoutext))
-    sudo('rm -rf /data/web_static/current')
-    sudo('ln -s /data/web_static/releases/{} /data/web_static/current'.format(
-        archive_withoutext))
-    return upload.succeeded
+    try:
+        pname = archive_path.replace('/', ' ')
+        pname = shlex.split(pname)
+        pname = pname[-1]
+
+        wname = pname.replace('.', ' ')
+        wname = shlex.split(wname)
+        wname = wname[0]
+
+        releases_path = "/data/web_static/releases/{}/".format(wname)
+        tmp_path = "/tmp/{}".format(pname)
+
+        put(archive_path, "/tmp/")
+        run("mkdir -p {}".format(releases_path))
+        run("tar -xzf {} -C {}".format(tmp_path, releases_path))
+        run("rm {}".format(tmp_path))
+        run("mv {}web_static/* {}".format(releases_path, releases_path))
+        run("rm -rf {}web_static".format(releases_path))
+        run("rm -rf /data/web_static/current")
+        run("ln -s {} /data/web_static/current".format(releases_path))
+        print("New version deployed!")
+        return True
+    except BaseException:
+        return False
